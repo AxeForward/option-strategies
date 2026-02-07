@@ -108,6 +108,7 @@ def get_option_quotes(underlying, expiry_date=None):
             'vol': float(t_data.get('volume', np.nan)) if t_data.get('volume') else np.nan,
             'bid_iv': float(m_data.get('bidIV', np.nan)) if m_data.get('bidIV') else np.nan,
             'ask_iv': float(m_data.get('askIV', np.nan)) if m_data.get('askIV') else np.nan,
+            'delta': float(m_data.get('delta', np.nan)) if m_data.get('delta') else np.nan,
         }
         
         if expiry not in data_by_expiry:
@@ -139,16 +140,18 @@ def get_option_quotes(underlying, expiry_date=None):
             c = strikes_data[strike]['call']
             p = strikes_data[strike]['put']
             
-            # Format: C_Vol, C_BidIV, C_Bid, C_Ask, C_AskIV | Strike | ...
+            # Format: C_Vol, C_BidIV, C_Bid, C_Ask, C_AskIV, C_Delta | Strike | ...
             row = {
                 'C_Vol': c.get('vol', np.nan),
                 'C_BidIV': c.get('bid_iv', np.nan),
                 'C_Bid': c.get('bid', np.nan),
                 'C_Ask': c.get('ask', np.nan),
                 'C_AskIV': c.get('ask_iv', np.nan),
+                'C_Delta': c.get('delta', np.nan),
                 
                 'Strike': strike,
                 
+                'P_Delta': p.get('delta', np.nan),
                 'P_BidIV': p.get('bid_iv', np.nan),
                 'P_Bid': p.get('bid', np.nan),
                 'P_Ask': p.get('ask', np.nan),
@@ -161,9 +164,9 @@ def get_option_quotes(underlying, expiry_date=None):
         if not df.empty:
             # Define column order
             cols = [
-                'C_Vol', 'C_BidIV', 'C_Bid', 'C_Ask', 'C_AskIV',
+                'C_Vol', 'C_BidIV', 'C_Bid', 'C_Ask', 'C_AskIV', 'C_Delta',
                 'Strike',
-                'P_BidIV', 'P_Bid', 'P_Ask', 'P_AskIV', 'P_Vol'
+                'P_Delta', 'P_BidIV', 'P_Bid', 'P_Ask', 'P_AskIV', 'P_Vol'
             ]
             df = df[cols]
             result[expiry] = df
@@ -199,7 +202,9 @@ def print_option_quotes(underlying, expiry_date=None):
         'C_Bid': '{:.2f}'.format,
         'C_Ask': '{:.2f}'.format,
         'C_AskIV': '{:.2f}'.format,
+        'C_Delta': '{:.4f}'.format,
         'Strike': '{:.0f}'.format,
+        'P_Delta': '{:.4f}'.format,
         'P_BidIV': '{:.2f}'.format,
         'P_Bid': '{:.2f}'.format,
         'P_Ask': '{:.2f}'.format,

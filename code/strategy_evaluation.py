@@ -11,7 +11,7 @@ import QuantLib as ql
 # Ensure current directory is in path
 sys.path.append(os.getcwd())
 from code.get_asset_option_t_quote import get_option_quotes
-from imgs.fetch_market_data import get_paradex_futures_data, get_fred_risk_free_rate
+from code.fetch_market_data import get_paradex_futures_data, get_fred_risk_free_rate
 
 def calculate_quantlib_greeks(S, K, expiry_date_str, r, sigma, option_type='call'):
     """
