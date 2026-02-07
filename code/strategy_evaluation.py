@@ -10,8 +10,8 @@ import QuantLib as ql
 # Import local modules
 # Ensure current directory is in path
 sys.path.append(os.getcwd())
-from code.get_asset_option_t_quote import get_option_quotes
-from code.fetch_market_data import get_paradex_futures_data, get_fred_risk_free_rate
+from get_asset_option_t_quote import get_option_quotes
+from fetch_market_data import get_paradex_futures_data, get_fred_risk_free_rate
 
 def calculate_quantlib_greeks(S, K, expiry_date_str, r, sigma, option_type='call'):
     """
@@ -191,6 +191,11 @@ def plot_strategy_payoff(pnl_data, spot_price, symbol="Asset", expiry_date=None,
         Name of the strategy for the title
     """
     print(f"\n--- Generating Payoff Chart for {strategy_name} ---")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_dir = os.path.join(project_root, "imgs")
+    os.makedirs(output_dir, exist_ok=True)
+    output_html_path = os.path.join(output_dir, os.path.basename(output_html))
+    output_png_path = os.path.join(output_dir, os.path.basename(output_png))
     
     price_range = pnl_data['price_range']
     leg_pnls = pnl_data['leg_pnls']
@@ -275,16 +280,16 @@ def plot_strategy_payoff(pnl_data, spot_price, symbol="Asset", expiry_date=None,
     )
     
     # Save outputs
-    print(f"   Saving interactive plot to {output_html}...")
-    fig.write_html(output_html)
+    print(f"   Saving interactive plot to {output_html_path}...")
+    fig.write_html(output_html_path)
     
     # Try creating PNG if kaleido is available
     try:
-        fig.write_image(output_png)
-        print(f"   Saved static image to {output_png}")
+        fig.write_image(output_png_path)
+        print(f"   Saved static image to {output_png_path}")
     except Exception as e:
         print(f"   Warning: Could not save PNG (Kaleido missing?): {e}")
-        print("   Please open the HTML file for the chart.")
+        print(f"   Please open the HTML file for the chart: {output_html_path}")
     
     print(f"   Chart generation complete!\n")
 
