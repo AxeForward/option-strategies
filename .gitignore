@@ -208,3 +208,7 @@ __marimo__/
 
 # API Keys
 .env
+
+# Images
+imgs/*
+!imgs/.gitkeep
