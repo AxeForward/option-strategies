@@ -54,8 +54,8 @@
 推荐直接照着现有的 `example_iron_condor()` / `example_gamma_scalping()` 的模式加一个新函数：
 
 1. 新建函数，例如 `example_my_strategy(symbol, expiry_date, ...)`。
-2. 获取对冲标的现价（永续 mid）：调用 `get_paradex_futures_data(f\"{symbol}-USD-PERP\")`。
-3. 获取期权链（含 bid/ask/delta）：调用 `get_option_quotes(f\"{symbol}USDT\", expiry_date)`。
+2. 获取对冲标的现价（永续 mid）：调用 `get_paradex_futures_data(f"{symbol}-USD-PERP")`。
+3. 获取期权链（含 bid/ask/delta）：调用 `get_option_quotes(f"{symbol}USDT", expiry_date)`。
 4. 选腿并用 bid/ask 估计成交价，组装 `option_legs`：
    - 每条腿的字典结构与含义（见 `src/strategy_evaluation.py`）：
      - `type`: `call` / `put` / `futures`
@@ -64,11 +64,11 @@
      - `premium`: 成交价（建议 buy 用 ask，sell 用 bid）
      - `quantity`: 数量（支持小数）
 5. 计算期权净 delta，并生成对冲腿：
- - 期权净 delta 计算要考虑买卖方向与数量：`buy` 记正、`sell` 记负（再乘 `quantity`）。
- - `hedge_qty = -net_option_delta`，然后把对冲腿作为 `type='futures'` 追加到 `legs`。
+   - 期权净 delta 计算要考虑买卖方向与数量：`buy` 记正、`sell` 记负（再乘 `quantity`）。
+   - `hedge_qty = -net_option_delta`，然后把对冲腿作为 `type='futures'` 追加到 `legs`。
 6. 调用评估与画图：
- - `pnl_data = calculate_strategy_pnl(legs, spot_price=spot, price_range=...)`
- - `plot_strategy_payoff(..., output_html=..., output_png=...)`
+   - `pnl_data = calculate_strategy_pnl(legs, spot_price=spot, price_range=...)`
+   - `plot_strategy_payoff(..., output_html=..., output_png=...)`
 7. （可选）在 `if __name__ == "__main__":` 中添加你的函数调用，方便直接运行。
 
 提示：当前示例的对冲是“静态/一次性”的（只在建仓时用期权链上的 delta 做一次对冲），后续的动态对冲属于 TODO。
