@@ -4,12 +4,15 @@ import os
 
 sys.path.append(os.getcwd())
 
-from strategy_evaluation import calculate_strategy_pnl, plot_strategy_payoff
+from strategy_evaluation import (
+    calculate_strategy_pnl,
+    plot_strategy_payoff,
+)
 from get_asset_option_t_quote import get_option_quotes
 from fetch_market_data import get_paradex_futures_data
 
 
-def _choose_by_target_delta(df, option_prefix, target_abs_delta):
+def choose_by_target_delta(df, option_prefix, target_abs_delta):
     """Select strike row whose absolute delta is closest to target_abs_delta."""
     delta_col = f"{option_prefix}_Delta"
     working = df[["Strike", delta_col, f"{option_prefix}_Bid", f"{option_prefix}_Ask"]].copy()
@@ -22,13 +25,14 @@ def _choose_by_target_delta(df, option_prefix, target_abs_delta):
     return working.sort_values("abs_delta_diff").iloc[0]
 
 
-def example_iron_condor(symbol="ETH", expiry_date=None):
+def example_iron_condor(symbol, expiry_date, short_target=0.20, wing_target = 0.05):
     """
     基于实时市场数据构建 Iron Condor，并用 Paradex 进行 Delta 对冲后 PnL 评估。
 
     Args:
-        symbol: 资产符号，例如 "ETH" 或 "BTC"
-        expiry_date: 到期日，格式 "YYYY-MM-DD"。为空时自动选择可用到期日中的第一个。
+        symbol: 资产符号，例如 "ETH" 或 "BTC".
+        short_target: 短仓目标 Delta 值，例如 0.20 表示 20%。
+        wing_target: 翼目标 Delta 值，例如 0.05 表示 5%。
     """
     print("\n" + "=" * 80)
     print("Example: Iron Condor (Live Quotes + Delta Hedge)")
@@ -57,19 +61,15 @@ def example_iron_condor(symbol="ETH", expiry_date=None):
 
     print(f"Using expiry: {chosen_expiry}, contracts: {len(chain)}")
 
-    # 目标 Delta
-    short_target = 0.20
-    wing_target = 0.05
-
     # 3) 选择各腿：
     # - Short Call abs(delta) ~= 0.20
     # - Long  Call abs(delta) ~= 0.05
     # - Short Put  abs(delta) ~= 0.20
     # - Long  Put  abs(delta) ~= 0.05
-    short_call = _choose_by_target_delta(chain, "C", short_target)
-    long_call = _choose_by_target_delta(chain, "C", wing_target)
-    short_put = _choose_by_target_delta(chain, "P", short_target)
-    long_put = _choose_by_target_delta(chain, "P", wing_target)
+    short_call = choose_by_target_delta(chain, "C", short_target)
+    long_call = choose_by_target_delta(chain, "C", wing_target)
+    short_put = choose_by_target_delta(chain, "P", short_target)
+    long_put = choose_by_target_delta(chain, "P", wing_target)
 
     legs_data = [short_call, long_call, short_put, long_put]
     if any(x is None for x in legs_data):
@@ -80,12 +80,12 @@ def example_iron_condor(symbol="ETH", expiry_date=None):
     if long_call["Strike"] <= short_call["Strike"]:
         higher_calls = chain[chain["Strike"] > short_call["Strike"]].copy()
         if not higher_calls.empty:
-            long_call = _choose_by_target_delta(higher_calls, "C", wing_target)
+            long_call = choose_by_target_delta(higher_calls, "C", wing_target)
 
     if long_put["Strike"] >= short_put["Strike"]:
         lower_puts = chain[chain["Strike"] < short_put["Strike"]].copy()
         if not lower_puts.empty:
-            long_put = _choose_by_target_delta(lower_puts, "P", wing_target)
+            long_put = choose_by_target_delta(lower_puts, "P", wing_target)
 
     # 4) 用 bid/ask 估算成交：卖出按 bid，买入按 ask
     sc_strike, sc_bid = float(short_call["Strike"]), float(short_call["C_Bid"])
@@ -143,7 +143,97 @@ def example_iron_condor(symbol="ETH", expiry_date=None):
     )
 
 
+def example_gamma_scalping(symbol, expiry_date=None):
+    """
+    Build a delta-hedged ATM long straddle (gamma scalping template) from live quotes.
+
+    Args:
+        symbol: Underlying symbol, e.g. "ETH" or "BTC".
+        expiry_date: Optional expiry in YYYY-MM-DD. If not set, choose first available.
+    """
+    print("\n" + "=" * 80)
+    print("Example: Gamma Scalping (Live Quotes Delta Hedge)")
+    print("=" * 80)
+
+    options_symbol = f"{symbol.upper()}USDT"
+    futures_symbol = f"{symbol.upper()}-USD-PERP"
+
+    futures_data = get_paradex_futures_data(futures_symbol)
+    if not futures_data:
+        print(f"Error: failed to fetch Paradex futures data for {futures_symbol}")
+        return
+
+    spot = futures_data["mid_price"]
+    print(f"Paradex {futures_symbol} mid: {spot:.2f}")
+
+    option_data_by_expiry = get_option_quotes(options_symbol, expiry_date)
+    if not option_data_by_expiry:
+        print(f"Error: failed to fetch option quotes for {options_symbol}")
+        return
+
+    available_expiries = sorted(option_data_by_expiry.keys())
+    if not available_expiries:
+        print("Error: no expiries available from option data.")
+        return
+
+    chosen_expiry = expiry_date if expiry_date in option_data_by_expiry else available_expiries[0]
+    if expiry_date and expiry_date not in option_data_by_expiry:
+        print(f"Warning: expiry {expiry_date} not found, fallback to {chosen_expiry}")
+
+    chain = option_data_by_expiry[chosen_expiry].copy()
+    if chain.empty:
+        print(f"Error: option chain is empty for expiry {chosen_expiry}")
+        return
+
+    chain["dist"] = (chain["Strike"] - spot).abs()
+    atm = chain.loc[chain["dist"].idxmin()]
+
+    strike = float(atm["Strike"])
+    call_ask = float(atm["C_Ask"])
+    put_ask = float(atm["P_Ask"])
+    call_delta = float(atm["C_Delta"])
+    put_delta = float(atm["P_Delta"])
+    net_option_delta = call_delta + put_delta
+    hedge_qty = -net_option_delta
+
+    hedge_action = "buy" if hedge_qty >= 0 else "sell"
+    hedge_leg = {
+        "type": "futures",
+        "action": hedge_action,
+        "premium": spot,
+        "quantity": abs(hedge_qty),
+    }
+
+    option_legs = [
+        {"type": "call", "action": "buy", "strike": strike, "premium": call_ask, "quantity": 1.0},
+        {"type": "put", "action": "buy", "strike": strike, "premium": put_ask, "quantity": 1.0},
+    ]
+    legs = option_legs + [hedge_leg]
+
+    print(f"Using expiry: {chosen_expiry}")
+    print(f"ATM strike: {strike:.0f}")
+    print(f"Call ask/delta: {call_ask:.4f} / {call_delta:.4f}")
+    print(f"Put  ask/delta: {put_ask:.4f} / {put_delta:.4f}")
+    print(f"Net option delta: {net_option_delta:.4f}")
+    print(f"Hedge leg: {hedge_action} {abs(hedge_qty):.4f} {futures_symbol} @ {spot:.2f}")
+
+    price_range = np.linspace(spot * 0.7, spot * 1.3, 300)
+    pnl_data = calculate_strategy_pnl(legs, spot_price=spot, price_range=price_range)
+
+    plot_strategy_payoff(
+        pnl_data=pnl_data,
+        spot_price=spot,
+        symbol=symbol.upper(),
+        expiry_date=chosen_expiry,
+        strike=strike,
+        output_html="gamma_scalping_payoff.html",
+        output_png="gamma_scalping_payoff.png",
+        strategy_name="Gamma Scalping (Delta Hedged via Paradex)",
+    )
+
+
 if __name__ == "__main__":
     # 示例：请按需修改 symbol/expiry_date
-    # 例如：example_iron_condor("ETH", "2026-03-27")
-    example_iron_condor("ETH", "2026-02-13")
+    # 例如：example_iron_condor("ETH", "2026-02-13")
+    example_gamma_scalping("ETH", "2026-02-20")
+    
