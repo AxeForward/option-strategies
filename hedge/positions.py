@@ -110,50 +110,50 @@ def example_manual_iron_condor_template() -> IronCondorPosition:
 
     For leg direction/order, see `static_strategy_examples.py` -> `example_iron_condor()`.
     """
-    expiry = "2026-02-13"
-    rf = 0.05
+    expiry = "2026-02-20"
+    rf = 0.034
 
     return IronCondorPosition(
         underlying="ETH",
         long_put=OptionLegPosition(
             option_type="put",
             action="buy",
-            strike=0.0,
+            strike=1500,
             expiry=expiry,
-            fill_price=0.0,
-            iv=0.0,
+            fill_price=7.8,
+            iv=1.1616,
             risk_free_rate=rf,
-            quantity=1.0,
+            quantity=0.1,
         ),
         short_put=OptionLegPosition(
             option_type="put",
             action="sell",
-            strike=0.0,
+            strike=1850,
             expiry=expiry,
-            fill_price=0.0,
-            iv=0.0,
+            fill_price=37.8,
+            iv=0.9158,
             risk_free_rate=rf,
-            quantity=1.0,
+            quantity=0.1,
         ),
         short_call=OptionLegPosition(
             option_type="call",
             action="sell",
-            strike=0.0,
+            strike=2400,
             expiry=expiry,
-            fill_price=0.0,
-            iv=0.0,
+            fill_price=30,
+            iv=0.7749,
             risk_free_rate=rf,
-            quantity=1.0,
+            quantity=0.1,
         ),
         long_call=OptionLegPosition(
             option_type="call",
             action="buy",
-            strike=0.0,
+            strike=2750,
             expiry=expiry,
-            fill_price=0.0,
-            iv=0.0,
+            fill_price=6.4,
+            iv=0.8533,
             risk_free_rate=rf,
-            quantity=1.0,
+            quantity=0.1,
         ),
         perp_futures=PerpFuturesPosition(symbol="ETH-USD-PERP", quantity=0.0, entry_price=None),
         opened_at=None,

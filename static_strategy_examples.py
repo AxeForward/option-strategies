@@ -226,6 +226,5 @@ def example_gamma_scalping(symbol, expiry_date=None):
 
 if __name__ == "__main__":
     # 示例：请按需修改 symbol/expiry_date
-    # 例如：example_iron_condor("ETH", "2026-02-13")
-    example_gamma_scalping("ETH", "2026-02-20")
-    
+    # example_gamma_scalping("ETH", "2026-02-20")
+    example_iron_condor("ETH", "2026-02-20")

@@ -6,16 +6,13 @@ changes beyond a configured threshold.
 """
 
 from __future__ import annotations
-
 import math
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional, Tuple
-
 import pandas as pd
-
-from hedge.positions import IronCondorPosition, OptionLegPosition
+from hedge.positions import IronCondorPosition, OptionLegPosition, example_manual_iron_condor_template
 from src.fetch_market_data import get_fred_risk_free_rate
 from src.get_asset_option_t_quote import get_option_quotes
 
@@ -24,7 +21,7 @@ from src.get_asset_option_t_quote import get_option_quotes
 class MonitorConfig:
     """Runtime configuration for dynamic hedge monitoring."""
 
-    interval_seconds: int = 3600
+    interval_seconds: int = 120
     delta_change_threshold: float = 0.20
     fred_series_id: str = "DGS3MO"
     rf_lookback_days: int = 14
@@ -101,7 +98,7 @@ def _portfolio_option_delta(position: IronCondorPosition) -> Tuple[float, Dict[s
 
 def _latest_risk_free_rate(cfg: MonitorConfig) -> Optional[Tuple[datetime, float]]:
     """Fetch latest available FRED risk-free rate (decimal form)."""
-    end_dt = datetime.utcnow().date()
+    end_dt = datetime.now(UTC).date()
     start_dt = end_dt - timedelta(days=cfg.rf_lookback_days)
 
     rf_df = get_fred_risk_free_rate(
@@ -127,6 +124,15 @@ def _calc_change_ratio(current: float, reference: float) -> float:
     return abs(current - reference) / abs(reference)
 
 
+def _min_rebalance_qty_by_underlying(underlying: str) -> float:
+    symbol = underlying.upper()
+    if symbol == "BTC":
+        return 0.001
+    if symbol == "ETH":
+        return 0.01
+    raise ValueError(f"Unsupported underlying for min rebalance qty: {underlying}. Add mapping first.")
+
+
 def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorConfig] = None) -> None:
     """
     Dynamic delta monitor:
@@ -142,6 +148,7 @@ def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorC
     cfg = cfg or MonitorConfig()
 
     current_perp_qty = float(position.perp_futures.quantity)
+    min_perp_rebalance_qty = _min_rebalance_qty_by_underlying(position.underlying)
     prev_option_delta: Optional[float] = None
     cycle = 0
 
@@ -154,10 +161,11 @@ def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorC
         f"Interval: {cfg.interval_seconds}s | Threshold: {cfg.delta_change_threshold:.1%} | "
         f"FRED series: {cfg.fred_series_id}"
     )
+    print(f"Min perp rebalance qty: {min_perp_rebalance_qty:.6f}")
 
     while True:
         cycle += 1
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         try:
             option_delta, leg_breakdown, used_expiry = _portfolio_option_delta(position)
@@ -201,21 +209,28 @@ def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorC
             if change_ratio > cfg.delta_change_threshold:
                 target_perp_qty = -option_delta
                 rebalance_qty = target_perp_qty - current_perp_qty
-                action = "BUY" if rebalance_qty > 0 else "SELL"
+                if abs(rebalance_qty) < min_perp_rebalance_qty:
+                    print("ALERT: Delta change exceeded threshold.")
+                    print(
+                        f"Suggested perp rebalance={rebalance_qty:.6f}, "
+                        f"below minimum tradable qty={min_perp_rebalance_qty:.6f}; skip adjustment."
+                    )
+                else:
+                    action = "BUY" if rebalance_qty > 0 else "SELL"
 
-                print("ALERT: Delta change exceeded threshold.")
-                print(
-                    f"Suggested perp rebalance: {action} {abs(rebalance_qty):.6f} "
-                    f"{position.perp_futures.symbol}"
-                )
-                print(
-                    f"Post-trade target perp qty={target_perp_qty:.6f}, "
-                    f"target portfolio delta¡Ö0.000000"
-                )
+                    print("ALERT: Delta change exceeded threshold.")
+                    print(
+                        f"Suggested perp rebalance: {action} {abs(rebalance_qty):.6f} "
+                        f"{position.perp_futures.symbol}"
+                    )
+                    print(
+                        f"Post-trade target perp qty={target_perp_qty:.6f}, "
+                        f"target portfolio delta: 0"
+                    )
 
-                if cfg.assume_rebalance_executed:
-                    current_perp_qty = target_perp_qty
-                    print("Assumption applied: rebalance executed, local perp qty updated.")
+                    if cfg.assume_rebalance_executed:
+                        current_perp_qty = target_perp_qty
+                        print("Assumption applied: rebalance executed, local perp qty updated.")
 
             prev_option_delta = option_delta
 
@@ -228,10 +243,8 @@ def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorC
 
 def demo_run() -> None:
     """Small runnable example with placeholder strikes/IV; replace with real position."""
-    from hedge.positions import example_manual_iron_condor_template
-
     pos = example_manual_iron_condor_template()
-    cfg = MonitorConfig(interval_seconds=3600, delta_change_threshold=0.20)
+    cfg = MonitorConfig(interval_seconds=120, delta_change_threshold=0.20)
     run_delta_hedge_monitor(pos, cfg)
 
 

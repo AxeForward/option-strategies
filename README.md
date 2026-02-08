@@ -73,6 +73,36 @@
 
 提示：当前示例的对冲是“静态/一次性”的（只在建仓时用期权链上的 delta 做一次对冲），后续的动态对冲属于 TODO。
 
+## 动态 Delta 对冲监控
+
+文件：`dynamic_hedgeing.py`
+
+功能：
+- 从 `hedge/positions.py` 读取策略组合仓位信息（当前实现针对 `IronCondorPosition`）。
+- 每隔 `MonitorConfig.interval_seconds` 刷新一次：期权链的各 leg delta + 无风险利率数据。
+- 重新计算组合净 delta；如果净期权 delta 相对上一次循环的变动比例超过 `delta_change_threshold`
+  （默认 0.20，即 20%），输出提示并给出永续期货的调仓量建议。
+
+数据来源：
+- 期权链与 Greeks（delta）：`src/get_asset_option_t_quote.py` -> `get_option_quotes()`
+- 无风险利率（FRED）：`src/fetch_market_data.py` -> `get_fred_risk_free_rate()`（需要 `FRED_API_KEY`）
+
+调仓计算（每次循环）：
+- `net_option_delta = sum(leg_delta * signed_quantity)`
+- `target_perp_qty = -net_option_delta`
+- `rebalance_qty = target_perp_qty - current_perp_qty`
+
+运行：
+```bash
+python dynamic_hedgeing.py
+```
+
+停止：
+- 在终端按 `Ctrl+C` 终止运行。
+
+说明：
+- 示例入口使用 `hedge/positions.py` 里的 `example_manual_iron_condor_template()`。
+
 ## TO DO / Roadmap
 
 - 动态对冲（随时间/价格更新 hedge，加入交易成本、滑点、资金费率等）
