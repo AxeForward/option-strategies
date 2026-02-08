@@ -1,12 +1,8 @@
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime
-import sys
 import os
 import QuantLib as ql
-
-# Ensure current directory is in path
-sys.path.append(os.getcwd())
 
 def calculate_quantlib_greeks(S, K, expiry_date_str, r, sigma, option_type='call'):
     """

@@ -1,15 +1,7 @@
 import numpy as np
-import sys
-import os
-
-sys.path.append(os.getcwd())
-
-from strategy_evaluation import (
-    calculate_strategy_pnl,
-    plot_strategy_payoff,
-)
-from get_asset_option_t_quote import get_option_quotes
-from fetch_market_data import get_paradex_futures_data
+from src.strategy_evaluation import calculate_strategy_pnl, plot_strategy_payoff
+from src.get_asset_option_t_quote import get_option_quotes
+from src.fetch_market_data import get_paradex_futures_data
 
 
 def choose_by_target_delta(df, option_prefix, target_abs_delta):

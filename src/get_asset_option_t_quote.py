@@ -2,8 +2,6 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import time
-import sys
 
 # Constants
 BASE_URL = "https://eapi.binance.com"
