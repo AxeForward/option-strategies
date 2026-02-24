@@ -163,88 +163,107 @@ def run_delta_hedge_monitor(position: IronCondorPosition, cfg: Optional[MonitorC
     )
     print(f"Min perp rebalance qty: {min_perp_rebalance_qty:.6f}")
 
-    while True:
-        cycle += 1
-        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        while True:
+            cycle += 1
+            now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        try:
-            option_delta, leg_breakdown, used_expiry = _portfolio_option_delta(position)
-        except Exception as exc:
-            print(f"[{now}] Cycle {cycle}: failed to refresh option deltas: {exc}")
-            if cfg.max_cycles is not None and cycle >= cfg.max_cycles:
-                break
-            time.sleep(cfg.interval_seconds)
-            continue
+            try:
+                option_delta, leg_breakdown, used_expiry = _portfolio_option_delta(position)
+            except Exception as exc:
+                print(f"[{now}] Cycle {cycle}: failed to refresh option deltas: {exc}")
+                if cfg.max_cycles is not None and cycle >= cfg.max_cycles:
+                    break
+                time.sleep(cfg.interval_seconds)
+                continue
 
-        rf_info = _latest_risk_free_rate(cfg)
-        if rf_info is None:
-            rf_str = "N/A"
-        else:
-            rf_dt, rf_rate = rf_info
-            rf_str = f"{rf_rate:.4%} (as of {rf_dt.date().isoformat()})"
+            rf_info = _latest_risk_free_rate(cfg)
+            if rf_info is None:
+                rf_str = "N/A"
+            else:
+                rf_dt, rf_rate = rf_info
+                rf_str = f"{rf_rate:.4%} (as of {rf_dt.date().isoformat()})"
 
-        portfolio_delta = option_delta + current_perp_qty
+            portfolio_delta = option_delta + current_perp_qty
 
-        print("-" * 88)
-        print(f"[{now}] Cycle {cycle} | Expiry={used_expiry} | RF={rf_str}")
-        print(
-            "Leg signed deltas | "
-            f"LP={leg_breakdown['long_put']:.6f}, "
-            f"SP={leg_breakdown['short_put']:.6f}, "
-            f"SC={leg_breakdown['short_call']:.6f}, "
-            f"LC={leg_breakdown['long_call']:.6f}"
-        )
-        print(
-            f"Net option delta={option_delta:.6f}, current perp qty={current_perp_qty:.6f}, "
-            f"portfolio delta={portfolio_delta:.6f}"
-        )
+            print("-" * 88)
+            print(f"[{now}] Cycle {cycle} | Expiry={used_expiry} | RF={rf_str}")
+            print(
+                "Leg signed deltas | "
+                f"LP={leg_breakdown['long_put']:.6f}, "
+                f"SP={leg_breakdown['short_put']:.6f}, "
+                f"SC={leg_breakdown['short_call']:.6f}, "
+                f"LC={leg_breakdown['long_call']:.6f}"
+            )
+            print(
+                f"Net option delta={option_delta:.6f}, current perp qty={current_perp_qty:.6f}, "
+                f"portfolio delta={portfolio_delta:.6f}"
+            )
 
-        if prev_option_delta is None:
-            print("Baseline initialized; waiting next cycle for delta change comparison.")
-            prev_option_delta = option_delta
-        else:
-            change_ratio = _calc_change_ratio(option_delta, prev_option_delta)
-            print(f"Delta change vs previous cycle: {change_ratio:.2%}")
-
-            if change_ratio > cfg.delta_change_threshold:
+            if prev_option_delta is None:
                 target_perp_qty = -option_delta
                 rebalance_qty = target_perp_qty - current_perp_qty
-                if abs(rebalance_qty) < min_perp_rebalance_qty:
-                    print("ALERT: Delta change exceeded threshold.")
-                    print(
-                        f"Suggested perp rebalance={rebalance_qty:.6f}, "
-                        f"below minimum tradable qty={min_perp_rebalance_qty:.6f}; skip adjustment."
-                    )
-                else:
+                if abs(rebalance_qty) >= min_perp_rebalance_qty:
                     action = "BUY" if rebalance_qty > 0 else "SELL"
-
-                    print("ALERT: Delta change exceeded threshold.")
+                    print("ALERT: First-run drift detected from initial delta-neutral state.")
                     print(
-                        f"Suggested perp rebalance: {action} {abs(rebalance_qty):.6f} "
+                        f"Urgent perp hedge needed: {action} {abs(rebalance_qty):.6f} "
                         f"{position.perp_futures.symbol}"
                     )
                     print(
                         f"Post-trade target perp qty={target_perp_qty:.6f}, "
                         f"target portfolio delta: 0"
                     )
+                    print("Program exits after first-run urgent hedge alert.")
+                    break
 
-                    if cfg.assume_rebalance_executed:
-                        current_perp_qty = target_perp_qty
-                        print("Assumption applied: rebalance executed, local perp qty updated.")
+                print("Baseline initialized; first-run drift is below minimum tradable qty.")
+                prev_option_delta = option_delta
+            else:
+                change_ratio = _calc_change_ratio(option_delta, prev_option_delta)
+                print(f"Delta change vs previous cycle: {change_ratio:.2%}")
 
-            prev_option_delta = option_delta
+                if change_ratio > cfg.delta_change_threshold:
+                    target_perp_qty = -option_delta
+                    rebalance_qty = target_perp_qty - current_perp_qty
+                    if abs(rebalance_qty) < min_perp_rebalance_qty:
+                        print("ALERT: Delta change exceeded threshold.")
+                        print(
+                            f"Suggested perp rebalance={rebalance_qty:.6f}, "
+                            f"below minimum tradable qty={min_perp_rebalance_qty:.6f}; skip adjustment."
+                        )
+                    else:
+                        action = "BUY" if rebalance_qty > 0 else "SELL"
 
-        if cfg.max_cycles is not None and cycle >= cfg.max_cycles:
-            print("Reached max_cycles; monitor stopped.")
-            break
+                        print("ALERT: Delta change exceeded threshold.")
+                        print(
+                            f"Suggested perp rebalance: {action} {abs(rebalance_qty):.6f} "
+                            f"{position.perp_futures.symbol}"
+                        )
+                        print(
+                            f"Post-trade target perp qty={target_perp_qty:.6f}, "
+                            f"target portfolio delta: 0"
+                        )
 
-        time.sleep(cfg.interval_seconds)
+                        if cfg.assume_rebalance_executed:
+                            current_perp_qty = target_perp_qty
+                            print("Assumption applied: rebalance executed, local perp qty updated.")
+
+                prev_option_delta = option_delta
+
+            if cfg.max_cycles is not None and cycle >= cfg.max_cycles:
+                print("Reached max_cycles; monitor stopped.")
+                break
+
+            time.sleep(cfg.interval_seconds)
+    except KeyboardInterrupt:
+        print("\nUser requested exit (Ctrl-C). Monitor stopped gracefully.")
 
 
 def demo_run() -> None:
     """Small runnable example with placeholder strikes/IV; replace with real position."""
     pos = example_manual_iron_condor_template()
-    cfg = MonitorConfig(interval_seconds=120, delta_change_threshold=0.20)
+    cfg = MonitorConfig(interval_seconds=300, delta_change_threshold=0.20)
     run_delta_hedge_monitor(pos, cfg)
 
 
